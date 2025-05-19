@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Date;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class WebLogConsumer {
     private static final String BOOTSTRAP_SERVERS = "192.168.150.115:9192,192.168.150.115:9194,192.168.150.125:9192";
@@ -67,15 +68,9 @@ public class WebLogConsumer {
 
         System.out.println("Listening for messages...");
 
-        // 성능 측정
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-        long totalSelectTime = 0;
-        long totalInsertTime = 0;
-        long beforeSelectTime = 0;
-        long afterSelectTime = 0;
-        long beforeInsertTime = 0;
-        long afterInsertTime = 0;
-        int count = 0;
+        // Throughput 측정
+        AtomicLong totalProcessed = new AtomicLong(); // 누적 메시지 수
+        long startTime = System.currentTimeMillis();
 
         // 메시지 컨슈밍
         while (true) {
@@ -102,9 +97,7 @@ public class WebLogConsumer {
                     String prodCd = (String) data.get("prod_cd");
 
                     // Redis 데이터 조회
-                    beforeSelectTime = System.currentTimeMillis();  // 참조 직전
                     String jedisData = jedis.get(cusno);
-                    afterSelectTime = System.currentTimeMillis();  // 참조 직후
 
                     if (jedisData != null) {
                         Map<String, String> customerData = mapper.readValue(jedisData, Map.class);
@@ -134,30 +127,7 @@ public class WebLogConsumer {
                                 stmt.setString(8, serviceId);
                                 stmt.setString(9, prodCd);
 
-                                beforeInsertTime = System.currentTimeMillis();   // 데이터 저장 시간
                                 stmt.executeUpdate();
-                                afterInsertTime = System.currentTimeMillis();   // 데이터 저장 시간
-
-                                // 시간 누적
-                                totalSelectTime += (afterSelectTime - beforeSelectTime);
-                                totalInsertTime += (afterInsertTime - beforeInsertTime);
-                                count++;
-
-                                // 건별 로그 출력
-//                                System.out.printf("[Log] 도착: %s / 참조: %s / 저장: %s / 참조시간: %dms / 저장시간: %dms%n",
-//                                        sdf.format(new Date(arrivalTime)),
-//                                        sdf.format(new Date(selectionTime)),
-//                                        sdf.format(new Date(insertTime)),
-//                                        (selectionTime - arrivalTime),
-//                                        (insertTime - arrivalTime));
-
-                                // 1,000건마다 평균 출력
-                                if (count % 1000 == 0) {
-                                    System.out.printf("[통계] 처리 건수: %,d / 평균 참조시간: %.2fms / 평균 저장시간: %.2fms%n",
-                                            count,
-                                            totalSelectTime / (double) count,
-                                            totalInsertTime / (double) count);
-                                }
 
                             } catch (SQLException e) {
                                 System.err.println("Failed to save record to DB: " + e.getMessage());
@@ -165,9 +135,19 @@ public class WebLogConsumer {
                         }
                     }
 
+                    // 메시지 1건 처리 후 count 증가
+                    totalProcessed.incrementAndGet();
+
                 } catch (Exception e) {
                     System.err.println("Error processing Kafka record or Redis data: " + e.getMessage());
                 }
+            }
+
+            long now = System.currentTimeMillis();
+            if (now - startTime >= 60000) { // 60초 후 처리량 출력
+                long count = totalProcessed.getAndSet(0); // count 초기화
+                System.out.println("Throughput: " + count + " records/min");
+                startTime = now;
             }
         }
     }
