@@ -97,41 +97,32 @@ public class WebLogConsumer {
                     String prodCd = (String) data.get("prod_cd");
 
                     // Redis 데이터 조회
-                    String jedisData = jedis.get(cusno);
+                    String cusGrade = jedis.hget(cusno, "CUS_GRADE");
 
-                    if (jedisData != null) {
-                        Map<String, String> customerData = mapper.readValue(jedisData, Map.class);
-
-                        // 데이터 추출
-                        String cusGrade = customerData.get("CUS_GRADE");
-                        String cusGender = customerData.get("CUS_GENDER");
-                        String cusAgeRange = customerData.get("CUS_AGE_RANGE");
-
-                        // VVIP 고객만 감지
-                        if ("01".equalsIgnoreCase(cusGrade)) {
+                    // VVIP 고객만 감지
+                    if ("01".equalsIgnoreCase(cusGrade)) {
 //                            System.out.println("VVIP Detected: " + cusno);
 
-                            // DB 저장
-                            String sql = "INSERT INTO TB_HR_TEST_WEB_LOG (timestamp, cusno, url, http_method, response_time, ip_address, status_code, service_id, prod_cd) " +
-                                    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        // DB 저장
+                        String sql = "INSERT INTO TB_HR_TEST_WEB_LOG (timestamp, cusno, url, http_method, response_time, ip_address, status_code, service_id, prod_cd) " +
+                                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)";
 //                            System.out.println("PreparedStatement sql: "+sql);
 
-                            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                                stmt.setTimestamp(1, timestamp);
-                                stmt.setString(2, cusno);
-                                stmt.setString(3, url);
-                                stmt.setString(4, httpMethod);
-                                stmt.setInt(5, responseTime);
-                                stmt.setString(6, ipAddress);
-                                stmt.setInt(7, statusCode);
-                                stmt.setString(8, serviceId);
-                                stmt.setString(9, prodCd);
+                        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                            stmt.setTimestamp(1, timestamp);
+                            stmt.setString(2, cusno);
+                            stmt.setString(3, url);
+                            stmt.setString(4, httpMethod);
+                            stmt.setInt(5, responseTime);
+                            stmt.setString(6, ipAddress);
+                            stmt.setInt(7, statusCode);
+                            stmt.setString(8, serviceId);
+                            stmt.setString(9, prodCd);
 
-                                stmt.executeUpdate();
+                            stmt.executeUpdate();
 
-                            } catch (SQLException e) {
-                                System.err.println("Failed to save record to DB: " + e.getMessage());
-                            }
+                        } catch (SQLException e) {
+                            System.err.println("Failed to save record to DB: " + e.getMessage());
                         }
                     }
 
